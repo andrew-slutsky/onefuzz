@@ -65,7 +65,6 @@ from data_migration import migrate
 from registration import (
     OnefuzzAppRole,
     add_application_password,
-    assign_multi_tenant_auth,
     assign_scaleset_role,
     authorize_application,
     register_application,
@@ -119,7 +118,6 @@ class Client:
         migrations: List[str],
         export_appinsights: bool,
         log_service_principal: bool,
-        multi_tenant_domain: str,
         upgrade: bool,
     ):
         self.resource_group = resource_group
@@ -144,7 +142,6 @@ class Client:
         self.migrations = migrations
         self.export_appinsights = export_appinsights
         self.log_service_principal = log_service_principal
-        self.multi_tenant_domain = multi_tenant_domain
 
         machine = platform.machine()
         system = platform.system()
@@ -277,14 +274,7 @@ class Client:
 
         if not existing:
             logger.info("creating Application registration")
-
-            if self.multi_tenant_domain is not None:
-                url = "https://%s/%s" % (
-                    self.multi_tenant_domain,
-                    self.application_name,
-                )
-            else:
-                url = "https://%s.azurewebsites.net" % self.application_name
+            url = "https://%s.azurewebsites.net" % self.application_name
 
             params = ApplicationCreateParameters(
                 display_name=self.application_name,
@@ -301,13 +291,7 @@ class Client:
                 ],
                 app_roles=app_roles,
             )
-
             app = client.applications.create(params)
-
-            if self.multi_tenant_domain is not None:
-                # signInAudience must be set using Microsoft Graph REST API and not Azure AD due to issue:
-                # https://github.com/Azure/azure-cli/issues/14086 requires Microsoft Graph REST API v1.0
-                assign_multi_tenant_auth(app.object_id)
 
             logger.info("creating service principal")
             service_principal_params = ServicePrincipalCreateParameters(
@@ -387,32 +371,12 @@ class Client:
         expiry = (datetime.now(TZ_UTC) + timedelta(days=365)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-
-        if self.multi_tenant_domain is not None:
-            # clear the value in the Issuer Url field:
-            # https://docs.microsoft.com/en-us/sharepoint/dev/spfx/use-aadhttpclient-enterpriseapi-multitenant
-            app_func_audience = "https://%s/%s" % (
-                self.multi_tenant_domain,
-                self.application_name,
-            )
-            app_func_issuer = ""
-            multi_tenant_domain = {"value": self.multi_tenant_domain}
-        else:
-            app_func_audience = "https://%s.azurewebsites.net" % self.application_name
-            app_func_issuer = (
-                "https://sts.windows.net/', subscription().tenantId, '/')]"
-            )
-            multi_tenant_domain = {"value": ""}
-
         params = {
-            "app_func_audience": {"value": app_func_audience},
             "name": {"value": self.application_name},
             "owner": {"value": self.owner},
             "clientId": {"value": self.results["client_id"]},
             "clientSecret": {"value": self.results["client_secret"]},
-            "app_func_issuer": {"value": app_func_issuer},
             "signedExpiry": {"value": expiry},
-            "multi_tenant_domain": multi_tenant_domain,
             "workbookData": {"value": self.workbook_data},
         }
         deployment = Deployment(
@@ -884,12 +848,6 @@ def main() -> None:
         action="store_true",
         help="display service prinipal with info log level",
     )
-    parser.add_argument(
-        "--multi_tenant_domain",
-        type=str,
-        default=None,
-        help="enable multi-tenant authentication with this tenant domain",
-    )
     args = parser.parse_args()
 
     if shutil.which("func") is None:
@@ -913,7 +871,6 @@ def main() -> None:
         migrations=args.apply_migrations,
         export_appinsights=args.export_appinsights,
         log_service_principal=args.log_service_principal,
-        multi_tenant_domain=args.multi_tenant_domain,
         upgrade=args.upgrade,
     )
     if args.verbose:
