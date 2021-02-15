@@ -108,13 +108,15 @@ impl ClientCredentials {
             .expect("Authority URL is cannot-be-a-base")
             .extend(&[&self.tenant, "oauth2", "v2.0", "token"]);
 
-        // If "multi_tenant_domain" exists in config.json then format self.resource:
-        // self.resource = "https://<multi_tenant_domain>/<instance_name>/
-        // Where <instance_name> is parsed out of the config item 'onefuzz_url'
+        // If [Optional] "multi_tenant_domain" item exists in config.json then format the scope
+        // using the following format instead of what is already in self.resource:
+        //    <instance_name> is parsed out of the config item 'onefuzz_url'
+        //    self.resource = "https://<multi_tenant_domain>/<instance_name>/
 
-        // How is self.tenant populated? It looks like std::env::var("ONEFUZZ_TENANT")
-        // But I cannot find any reference in the entire OneFuzz project for where it's set. So
+        // How is self.tenant populated? It looks like from std::env::var("ONEFUZZ_TENANT")
+        // But I cannot find any reference in the project for where it's set. So
         // we may also need to assign 'https://login.microsoftonline.com/common" to self.tenant
+        // but maybe not. 
 
         let response = reqwest::Client::new()
             .post(url)
@@ -124,9 +126,7 @@ impl ClientCredentials {
                 ("client_secret", self.client_secret.expose_ref().to_string()),
                 ("grant_type", "client_credentials".into()),
                 ("tenant", self.tenant.clone()),
-                (
-                    "scope",
-                    "https://mspmecloud.onmicrosoft.com/anslutsk-testing1337/.default".to_string(),
+                ("scope", "{}.default".format(self.resource.clone()),
                 ),
             ])
             .send_retry_default()
