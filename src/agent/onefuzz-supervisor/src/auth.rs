@@ -126,8 +126,7 @@ impl ClientCredentials {
                 ("client_secret", self.client_secret.expose_ref().to_string()),
                 ("grant_type", "client_credentials".into()),
                 ("tenant", self.tenant.clone()),
-                ("scope", "{}.default".format(self.resource.clone()),
-                ),
+                ("scope", format!("{}.default", self.resource)),
             ])
             .send_retry_default()
             .await?
